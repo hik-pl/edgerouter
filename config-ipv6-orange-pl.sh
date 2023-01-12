@@ -1,6 +1,6 @@
 
 #ISP Orange PL IPv6 + TV
-
+configure
 set interfaces ethernet eth0 description WAN_ORANGE
 set interfaces ethernet eth0 duplex auto
 set interfaces ethernet eth0 mtu 1564
@@ -30,14 +30,21 @@ set interfaces ethernet eth0 vif 35 pppoe 1 name-server auto
 set interfaces ethernet eth0 vif 35 pppoe 1 password USER-PASSWORD
 set interfaces ethernet eth0 vif 35 pppoe 1 user-id USER-LOGIN@neostrada.pl/ipv6
 
+#ipv6 pd for interface for defailt LAN on eth0
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth1 host-address '::1'
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth1 no-dns
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth1 prefix-id ':1'
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth1 service slaac
 
+#example pd for interface for vlan 8 on eth4
+set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth4.8 host-address '::1'
+set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth4.8 no-dns
+set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth4.8 prefix-id ':08'
+set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth4.8 service slaac
 
 set interfaces ethernet eth0 vif 838 address 172.16.83.8/32
 set interfaces ethernet eth0 vif 838 dhcp-options client-option 'send vendor-class-identifier &quot;sagemcom&quot;;'
+#PUT LIVEBOX MAC address after 1:
 set interfaces ethernet eth0 vif 838 dhcp-options client-option 'send dhcp-client-identifier 1:MAC:MAC:MAC:CH:AN:GE;'
 set interfaces ethernet eth0 vif 838 dhcp-options client-option 'send user-class &quot;\047FSVDSL_funbox2.MLTV.softathome.Funbox2&quot;;'
 set interfaces ethernet eth0 vif 838 dhcp-options client-option 'request subnet-mask, routers, rfc3442-classless-static-routes;'
@@ -146,4 +153,84 @@ set protocols igmp-proxy interface eth4.71 alt-subnet 0.0.0.0/0
 set protocols igmp-proxy interface eth4.71 role downstream
 set protocols igmp-proxy interface eth4.71 threshold 1
 
+set service nat rule 5012 description tv
+set service nat rule 5012 log disable
+set service nat rule 5012 outbound-interface eth0.838
+set service nat rule 5012 protocol all
+set service nat rule 5012 type masquerade
+commit
+save
+exit
 
+cat <<'EOF' > /config/scripts/rfc3442-classless-routes.sh
+# set classless routes based on the format specified in RFC3442
+# e.g.:
+#   new_rfc3442_classless_static_routes='24 192 168 10 192 168 1 1 8 10 10 17 66 41'
+# specifies the routes:
+#   192.168.10.0/24 via 192.168.1.1
+#   10.0.0.0/8 via 10.10.17.66.41
+
+RUN="yes"
+
+
+if [ "$RUN" = "yes" ]; then
+        if [ -n "$new_rfc3442_classless_static_routes" ]; then
+                if [ "$reason" = "BOUND" ] || [ "$reason" = "REBOOT" ]; then
+
+                        set -- $new_rfc3442_classless_static_routes
+
+                        while [ $# -gt 0 ]; do
+                                net_length=$1
+                                via_arg=''
+
+                                case $net_length in
+                                        32|31|30|29|28|27|26|25)
+                                                net_address="${2}.${3}.${4}.${5}"
+                                                gateway="${6}.${7}.${8}.${9}"
+                                                shift 9
+                                                ;;
+                                        24|23|22|21|20|19|18|17)
+                                                net_address="${2}.${3}.${4}.0"
+                                                gateway="${5}.${6}.${7}.${8}"
+                                                shift 8
+                                                ;;
+                                        16|15|14|13|12|11|10|9)
+                                                net_address="${2}.${3}.0.0"
+                                                gateway="${4}.${5}.${6}.${7}"
+                                                shift 7
+                                                ;;
+                                        8|7|6|5|4|3|2|1)
+                                                net_address="${2}.0.0.0"
+                                                gateway="${3}.${4}.${5}.${6}"
+                                                shift 6
+                                                ;;
+                                        0)      # default route
+                                                net_address="0.0.0.0"
+                                                gateway="${2}.${3}.${4}.${5}"
+                                                shift 5
+                                                ;;
+                                        *)      # error
+                                                return 1
+                                                ;;
+                                esac
+
+                                # take care of link-local routes
+                                if [ "${gateway}" != '0.0.0.0' ]; then
+                                        via_arg="via ${gateway}"
+                                fi
+
+                                # set route (ip detects host routes automatically)
+                                ip -4 route add "${net_address}/${net_length}" \
+                                        ${via_arg} dev "${interface}" >/dev/null 2>&1
+                        done
+                fi
+        fi
+fi
+EOF
+
+
+
+cat <<'EOF' > /config/scripts/post-config.d/rfc3442.sh
+#!/bin/sh
+/bin/cp /config/scripts/rfc3442-classless-routes.sh /etc/dhcp3/dhclient-exit-hooks.d/rfc3442-classless-routes
+EOF
