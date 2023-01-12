@@ -15,7 +15,6 @@ set interfaces ethernet eth0 vif 35 pppoe 0 name-server auto
 set interfaces ethernet eth0 vif 35 pppoe 0 password USER-PASSWORD
 set interfaces ethernet eth0 vif 35 pppoe 0 user-id USER-LOGIN@neostrada.pl
 
-
 set interfaces ethernet eth0 vif 35 pppoe 1 default-route auto
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 prefix-length /56
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd prefix-only
@@ -36,7 +35,7 @@ set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth1 no-dns
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth1 prefix-id ':1'
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth1 service slaac
 
-#example pd for interface for vlan 8 on eth4
+#example ipv6 pd for vlan 8 on eth4
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth4.8 host-address '::1'
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth4.8 no-dns
 set interfaces ethernet eth0 vif 35 pppoe 1 dhcpv6-pd pd 0 interface eth4.8 prefix-id ':08'
@@ -228,9 +227,11 @@ if [ "$RUN" = "yes" ]; then
 fi
 EOF
 
-
-
 cat <<'EOF' > /config/scripts/post-config.d/rfc3442.sh
 #!/bin/sh
 /bin/cp /config/scripts/rfc3442-classless-routes.sh /etc/dhcp3/dhclient-exit-hooks.d/rfc3442-classless-routes
 EOF
+
+chmod +x /config/scripts/rfc3442-classless-routes.sh
+chmod +x /config/scripts/post-config.d/rfc3442.sh
+
